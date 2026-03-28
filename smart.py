@@ -1,282 +1,199 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 import pandas as pd
 import pickle
 import os
-
-# AI imports
 from langchain_groq import ChatGroq
-from langchain_core.prompts import PromptTemplate
 from dotenv import load_dotenv
 
 load_dotenv()
 
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'smart-ai-secret-key-123' # Change this in production
+import os
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
 # ==============================
-# LOAD MODEL
+# 1. AUTHENTICATION SETUP
+# ==============================
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+# Mock Database for Users
+users = {
+    "maddi.naresh0520@gmail.com": {
+        "password": generate_password_hash("NareshIT@2026"),
+        "name": "Naresh Maddi"
+    }
+}
+
+class User(UserMixin):
+    def __init__(self, id, name):
+        self.id = id
+        self.name = name
+
+@login_manager.user_loader
+def load_user(user_id):
+    if user_id not in users:
+        return None
+    return User(user_id, users[user_id]['name'])
+
+# ==============================
+# 2. DATA & MODEL LOADING
 # ==============================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 model_path = os.path.join(BASE_DIR, "model.pkl")
+data_path = os.path.join(BASE_DIR, "insurance_data.csv")
 
-if not os.path.exists(model_path):
-    raise FileNotFoundError("❌ model.pkl not found")
+if not os.path.exists(model_path): raise FileNotFoundError("❌ model.pkl not found")
+if not os.path.exists(data_path): raise FileNotFoundError("❌ insurance_data.csv not found")
 
 model = pickle.load(open(model_path, "rb"))
-
-# ==============================
-# LOAD DATA
-# ==============================
-data_path = os.path.join(BASE_DIR, "insurance_data.csv")
 df = pd.read_csv(data_path)
 
+# Clean data
 df["Diseases Covered"] = df["Diseases Covered"].astype(str).str.lower()
 df["Company"] = df["Company"].astype(str)
+df["Premium"] = pd.to_numeric(df["Premium"], errors="coerce")
+df["Coverage"] = pd.to_numeric(df["Coverage"], errors="coerce")
+df["Claim Ratio"] = pd.to_numeric(df["Claim Ratio"], errors="coerce")
+df = df.dropna()
 
 # ==============================
-# LLM SETUP
+# 3. AI LOGIC & CHATBOT SETUP
 # ==============================
-llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
-    temperature=0.4
-)
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.3)
 
-prompt = PromptTemplate(
-    input_variables=["plan", "user", "rank"],
-    template="""
-You are a friendly insurance advisor.
-
-Use VERY SIMPLE English.
-
-RULES:
-- Always use "-"
-- Give 2 Pros
-- Give 1 or 2 Cons
-- Short sentences
-- If rank = 1 → say BEST
-
-FORMAT:
-
-Pros:
-- text
-- text
-
-Cons:
-- text
-
-Recommendation:
-- text
-
-User:
-{user}
-
-Plan:
-{plan}
-
-Rank:
-{rank}
-"""
-)
-
-# ==============================
-# AI FUNCTION
-# ==============================
 def generate_ai_insight(plan, user, rank):
+    prompt = f"""
+    Context: Rank {rank} Insurance Plan for a user with profile {user}.
+    Plan Details: {plan}
+    Task: Provide 2 Pros, 1 Con, and a 1-sentence recommendation in simple English.
+    Format:
+    Pros: - point 1 - point 2
+    Cons: - point 1
+    Recommendation: - text
+    """
     try:
-        chain = prompt | llm
-        res = chain.invoke({
-            "plan": str(plan),
-            "user": str(user),
-            "rank": rank
-        }).content
-        return res
-    except Exception as e:
-        print("AI ERROR:", e)
-        return """Pros:
-- Good coverage
-- Trusted company
+        return llm.invoke(prompt).content
+    except:
+        return "Pros: - Budget friendly - Good claim ratio\nCons: - Basic coverage\nRecommendation: - Safe choice."
 
-Cons:
-- Premium slightly high
-
-Recommendation:
-- Safe and balanced plan"""
-
-
-# ==============================
-# PARSE AI OUTPUT
-# ==============================
 def parse_ai_output(text):
-    pros, cons, rec = [], [], []
-    section = None
-
-    for line in text.split("\n"):
-        line = line.strip()
-
-        if line.lower().startswith("pros"):
-            section = "pros"
-        elif line.lower().startswith("cons"):
-            section = "cons"
-        elif line.lower().startswith("recommendation"):
-            section = "rec"
-        elif line.startswith("-"):
-            if section == "pros":
-                pros.append(line[1:].strip())
-            elif section == "cons":
-                cons.append(line[1:].strip())
-            elif section == "rec":
-                rec.append(line[1:].strip())
-
-    return {
-        "pros": pros if pros else ["Good coverage"],
-        "cons": cons if cons else ["No major issues"],
-        "rec": rec if rec else ["This is a decent plan"]
-    }
-
+    sections = {"pros": [], "cons": [], "rec": []}
+    current = None
+    for line in text.split('\n'):
+        if "pros" in line.lower(): current = "pros"
+        elif "cons" in line.lower(): current = "cons"
+        elif "recommendation" in line.lower(): current = "rec"
+        elif "-" in line and current:
+            sections[current].append(line.split("-")[-1].strip())
+    return sections
 
 # ==============================
-# FEATURE ENGINEERING
+# 4. RECOMMENDATION ENGINE
 # ==============================
-def prepare_features(plan, user):
-
-    premium = float(plan["Premium"])
-
-    # Age impact
-    for age in user["ages"]:
-        if str(age).isdigit():
-            age = int(age)
-            if age > 50:
-                premium += 2000
-            elif age > 40:
-                premium += 1500
-            elif age > 30:
-                premium += 1000
-
-    # Family size
-    members = len([a for a in user["ages"] if a])
-    if members > 1:
-        premium += (members - 1) * 1200
-
-    # Disease impact
-    disease_flag = 0
-    for d in user["diseases"]:
-        if d and d.lower() in plan["Diseases Covered"]:
-            disease_flag = 1
-            break
-
-    coverage = max(float(plan["Coverage"]), 100000)
-    premium_per_lakh = premium / (coverage / 100000)
-
-    return premium, [
-        premium,
-        plan["Coverage"],
-        plan["Claim Ratio"],
-        premium_per_lakh,
-        disease_flag
-    ]
-
-
-# ==============================
-# RECOMMENDATION ENGINE
-# ==============================
-def recommend_plans(user, company_filter=None, claim_filter=None):
-
+def recommend_plans(user_data, company_filter=None):
     temp_df = df.copy()
-
-    # Company filter
     if company_filter:
         temp_df = temp_df[temp_df["Company"] == company_filter]
+    
+    target_cov = int(user_data.get('coverage', 500000))
+    temp_df = temp_df[(temp_df["Coverage"] >= target_cov * 0.5) & (temp_df["Coverage"] <= target_cov * 2.0)]
 
-    # Claim filter
-    if claim_filter:
-        claim_filter = int(claim_filter)
-        temp_df = temp_df[temp_df["Claim Ratio"] >= claim_filter]
-
-    if temp_df.empty:
-        return temp_df
-
-    scores = []
-    adjusted_premiums = []
-
+    scores, premiums = [], []
     for _, row in temp_df.iterrows():
-        premium, features = prepare_features(row, user)
-
+        prem = float(row["Premium"])
+        
+        # 🟢 FIX: Safely get ages to prevent KeyError
+        user_ages = user_data.get('ages', [])
+        for age in user_ages:
+            if str(age).isdigit() and int(age) > 45: 
+                prem += 2000
+        
+        # 🟢 FIX: Safely get diseases
+        user_diseases = user_data.get('diseases', [])
+        disease_match = 1 if any(d.lower() in row["Diseases Covered"] for d in user_diseases if d) else 0
+        
+        features = [[prem, float(row["Coverage"]), float(row["Claim Ratio"]), prem/(row["Coverage"]/100000), disease_match]]
+        feat_df = pd.DataFrame(features, columns=["Premium", "Coverage", "Claim Ratio", "premium_per_lakh", "Disease Flag"])
+        
         try:
-            prob = model.predict_proba([features])[0][1]
+            scores.append(model.predict_proba(feat_df)[0][1])
         except:
-            prob = 0.5
-
-        scores.append(prob)
-        adjusted_premiums.append(int(premium))
+            scores.append(0.5)
+        premiums.append(int(prem))
 
     temp_df["ML Score"] = scores
-    temp_df["Adjusted Premium"] = adjusted_premiums
-
-    return temp_df.sort_values(by="ML Score", ascending=False)
-
+    temp_df["Adjusted Premium"] = premiums
+    return temp_df.sort_values("ML Score", ascending=False).head(3)
 
 # ==============================
-# FLASK APP
+# 5. FLASK ROUTES
 # ==============================
-app = Flask(__name__)
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form.get("email")
+        password = request.form.get("password")
+        
+        user_data = users.get(email)
+        if user_data and check_password_hash(user_data['password'], password):
+            user_obj = User(email, user_data['name'])
+            login_user(user_obj)
+            return redirect(url_for('home'))
+        else:
+            flash("Invalid credentials. Try admin@smartai.com / password123")
+            
+    return render_template("login.html")
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
 
 @app.route("/", methods=["GET", "POST"])
+@login_required 
 def home():
+    # Setup Dropdown lists
+    all_diseases = sorted(list(set([d.strip().title() for sub in df["Diseases Covered"].dropna() for d in sub.split(",")])))
+    companies = sorted(df["Company"].unique().tolist())
 
-    companies = sorted(df["Company"].dropna().unique().tolist())
-
+    # Only process data IF the user clicks the submit button
     if request.method == "POST":
-
-        names = request.form.getlist("name[]")
-        ages = request.form.getlist("age[]")
-        relations = request.form.getlist("relation[]")
-        diseases = request.form.getlist("disease[]")
-
-        coverage = int(request.form.get("coverage", 300000))
-        company_filter = request.form.get("company")
-        claim_filter = request.form.get("claim_ratio")
-
         user = {
-            "names": names,
-            "ages": ages,
-            "relations": relations,
-            "diseases": diseases,
-            "coverage": coverage
+            "ages": request.form.getlist("age[]"),
+            "diseases": request.form.getlist("disease[]"),
+            "coverage": request.form.get("coverage", 500000)    
         }
+        results = recommend_plans(user, request.form.get("company"))
+        insights = [parse_ai_output(generate_ai_insight(r, user, i+1)) for i, r in enumerate(results.to_dict('records'))]
+        
+        return render_template("index.html", 
+                               tables=results.to_dict('records'), 
+                               ai_outputs=insights, 
+                               diseases=all_diseases, 
+                               companies=companies, 
+                               user_name=current_user.name)
 
-        results = recommend_plans(user, company_filter, claim_filter)
+    # Initial page load (GET request)
+    return render_template("index.html", diseases=all_diseases, companies=companies, user_name=current_user.name)
 
-        # HANDLE EMPTY RESULT (IMPORTANT FIX)
-        if results.empty:
-            return render_template(
-                "index.html",
-                tables=[],
-                ai_outputs=[],
-                companies=companies
-            )
+@app.route("/chat", methods=["POST"])
+@login_required
+def chat():
+    msg = request.json.get("message")
+    try:
+        res = llm.invoke(f"Help Assistant Bot: Answer this insurance query shortly: {msg}").content
+        return jsonify({"response": res})
+    except:
+        return jsonify({"response": "I'm having trouble connecting right now. Please try again!"})
 
-        parsed_outputs = []
-
-        for idx, (_, row) in enumerate(results.iterrows()):
-            rank = idx + 1
-            raw = generate_ai_insight(row.to_dict(), user, rank)
-            parsed_outputs.append(parse_ai_output(raw))
-
-        return render_template(
-            "index.html",
-            tables=results.to_dict(orient="records"),
-            ai_outputs=parsed_outputs,
-            companies=companies
-        )
-
-    return render_template(
-        "index.html",
-        tables=None,
-        ai_outputs=None,
-        companies=companies
-    )
-
-
-# ==============================
-# RUN
-# ==============================
 if __name__ == "__main__":
     app.run(debug=True)
