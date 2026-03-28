@@ -1,7 +1,7 @@
-Flask==2.3.3
+Flask==3.0.2
+google-generativeai==0.4.1
 pandas==2.2.1
-flask-login
-gunicorn
-langchain-groq
-python-dotenv
-scikit-learn
+scikit-learn==1.4.1.post1
+gunicorn==21.2.0
+numpy==1.26.4
+python-dotenv==1.0.1
