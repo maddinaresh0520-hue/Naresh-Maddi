@@ -1,0 +1,9 @@
+plan,company,premium,coverage,claim_ratio,waiting_period,network_hospitals,diabetes_cover,room_rent_limit
+Health Gain Plus,Star Health Insurance,9500,500000,93,1,12000,yes,private
+Optima Restore,HDFC ERGO Health Insurance,12500,1000000,96,0,13000,yes,any
+Activ Health Platinum,Aditya Birla Health Insurance,11000,800000,95,1,10000,yes,private
+Care Supreme,Care Health Insurance,8500,600000,92,2,9000,no,shared
+ReAssure 2.0,Niva Bupa Health Insurance,14000,1500000,97,0,11000,yes,any
+Health Companion,Max Bupa Health Insurance,10000,700000,94,1,8500,yes,private
+Arogya Sanjeevani,New India Assurance,6000,500000,88,2,7000,no,shared
+MediCare Premium,ICICI Lombard Health Insurance,13000,1200000,96,1,10500,yes,any

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>AI Insurance Advisor</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+    font-family: Arial;
+    margin: 0;
+    background: linear-gradient(to right, #eef2f3, #dfe9f3);
+}
+
+.container {
+    display: flex;
+}
+
+/* SIDEBAR */
+.sidebar {
+    width: 30%;
+    background: linear-gradient(180deg, #2f80ed, #1c5ed6);
+    color: white;
+    padding: 20px;
+}
+
+.member-box {
+    background: white;
+    color: black;
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+input, select {
+    width: 95%;
+    padding: 8px;
+    margin: 5px 0;
+}
+
+button {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    color: white;
+    border-radius: 5px;
+    margin-top: 10px;
+    cursor: pointer;
+}
+
+.add-btn { background: orange; }
+.submit-btn { background: #27ae60; }
+
+/* MAIN */
+.main {
+    width: 70%;
+    padding: 20px;
+}
+
+.card {
+    background: white;
+    padding: 15px;
+    margin-top: 15px;
+    border-radius: 10px;
+}
+
+/* BEST PLAN */
+.best {
+    border: 3px solid gold;
+}
+
+/* BOXES */
+.pros-box {
+    border: 2px solid green;
+    background:#eafaf1;
+    padding:10px;
+    margin-top:10px;
+}
+
+.cons-box {
+    border: 2px solid red;
+    background:#fdecea;
+    padding:10px;
+    margin-top:10px;
+}
+
+.rec-box {
+    border: 2px solid blue;
+    background:#eef5ff;
+    padding:10px;
+    margin-top:10px;
+}
+
+li {
+    margin-left: 20px;
+}
+
+/* MOBILE */
+@media (max-width:768px){
+    .container { flex-direction: column; }
+    .sidebar, .main { width:100%; }
+}
+</style>
+
+<script>
+function addMember(){
+    let html = `
+    <div class="member-box">
+        <input name="name[]" placeholder="Name" required>
+        <input name="age[]" type="number" placeholder="Age" required>
+
+        <select name="relation[]">
+            <option>Self</option>
+            <option>Spouse</option>
+            <option>Child</option>
+            <option>Parent</option>
+        </select>
+
+        <select name="disease[]">
+            <option value="">No Disease</option>
+            <option value="diabetes">Diabetes</option>
+            <option value="heart disease">Heart</option>
+            <option value="cancer">Cancer</option>
+        </select>
+    </div>`;
+    document.getElementById("members").insertAdjacentHTML('beforeend', html);
+}
+</script>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+<form method="POST">
+
+<h3>👨‍👩‍👧 Members</h3>
+
+<div id="members">
+
+<div class="member-box">
+<input name="name[]" placeholder="Name" required>
+<input name="age[]" type="number" placeholder="Age" required>
+
+<select name="relation[]">
+<option>Self</option>
+<option>Spouse</option>
+<option>Child</option>
+<option>Parent</option>
+</select>
+
+<select name="disease[]">
+<option value="">No Disease</option>
+<option value="diabetes">Diabetes</option>
+<option value="heart disease">Heart</option>
+<option value="cancer">Cancer</option>
+</select>
+</div>
+
+</div>
+
+<button type="button" class="add-btn" onclick="addMember()">➕ Add Member</button>
+
+<hr>
+
+<label>Coverage</label>
+<select name="coverage">
+<option value="300000">₹3L</option>
+<option value="500000">₹5L</option>
+<option value="1000000">₹10L</option>
+</select>
+
+<label>Company</label>
+<select name="company">
+<option value="">All</option>
+{% for c in companies %}
+<option value="{{c}}">{{c}}</option>
+{% endfor %}
+</select>
+
+<label>Claim Ratio</label>
+<select name="claim_ratio">
+<option value="">All</option>
+<option value="90">90%+</option>
+<option value="95">95%+</option>
+</select>
+
+<button class="submit-btn">Find Plans</button>
+
+</form>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+<h2>🏥 Recommended Plans</h2>
+
+{% if not tables %}
+<p>Fill details and click "Find Plans"</p>
+{% endif %}
+
+{% if tables %}
+
+{% for i in range(tables|length) %}
+<div class="card {% if i==0 %}best{% endif %}">
+
+<h3>
+{{ tables[i]['Plan Name'] }}
+{% if i == 0 %} ⭐ BEST{% endif %}
+</h3>
+
+<p><b>Company:</b> {{ tables[i]['Company'] }}</p>
+<p><b>Premium:</b> ₹{{ tables[i]['Adjusted Premium'] }}</p>
+
+<!-- PROS -->
+<div class="pros-box">
+<h4>✅ Pros</h4>
+<ul>
+{% for p in ai_outputs[i]['pros'] %}
+<li>{{ p }}</li>
+{% endfor %}
+</ul>
+</div>
+
+<!-- CONS -->
+<div class="cons-box">
+<h4>❌ Cons</h4>
+<ul>
+{% for c in ai_outputs[i]['cons'] %}
+<li>{{ c }}</li>
+{% endfor %}
+</ul>
+</div>
+
+<!-- RECOMMENDATION -->
+<div class="rec-box">
+<h4>⭐ Recommendation</h4>
+{% for r in ai_outputs[i]['rec'] %}
+<p>{{ r }}</p>
+{% endfor %}
+</div>
+
+</div>
+{% endfor %}
+
+<!-- GRAPH (FIXED ERROR HERE) -->
+<canvas id="chart"></canvas>
+
+<script>
+let labels = {{ tables | map(attribute='Plan Name') | list | tojson | safe }};
+let premiums = {{ tables | map(attribute='Adjusted Premium') | list | tojson | safe }};
+let coverage = {{ tables | map(attribute='Coverage') | list | tojson | safe }};
+
+new Chart(document.getElementById("chart"), {
+    type: 'bar',
+    data: {
+        labels: labels,
+        datasets: [
+            {
+                label: 'Premium',
+                data: premiums
+            },
+            {
+                label: 'Coverage',
+                data: coverage
+            }
+        ]
+    }
+});
+</script>
+
+{% endif %}
+
+</div>
+
+</div>
+
+</body>
+</html>
