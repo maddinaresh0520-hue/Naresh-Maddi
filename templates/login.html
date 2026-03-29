@@ -21,10 +21,14 @@
           {% endif %}
         {% endwith %}
 
-        <form method="POST" class="space-y-6">
-            <input type="email" name="email" placeholder="Email" required class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-blue-500">
-            <input type="password" name="password" placeholder="Password" required class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-blue-500">
-            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-xl font-bold text-white transition">AUTHORIZE ACCESS</button>
+        <form action="/login" method="POST" class="space-y-6 text-center">
+            <p class="text-slate-400 text-sm mb-4">We will send a code to your email</p>
+            <input type="email" name="email" placeholder="Enter your email" required 
+                   class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-blue-500 text-center">
+            
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-xl font-bold text-white transition tracking-widest">
+                SEND OTP
+            </button>
         </form>
     </div>
 </body>

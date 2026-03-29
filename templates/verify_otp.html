@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Verify OTP | Smart AI Insurance</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #0b0f1a; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .glass { background: rgba(23, 32, 53, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+    </style>
+</head>
+<body>
+    <div class="glass p-10 rounded-3xl w-full max-w-md shadow-2xl text-center text-white">
+        <h1 class="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 mb-4">Enter Code</h1>
+        <p class="text-slate-400 mb-8 text-sm">We sent a 6-digit code to <br><span class="text-blue-400 font-bold">{{ email }}</span></p>
+
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="bg-red-500/20 text-red-400 p-3 rounded-xl mb-6 text-sm border border-red-500/50">
+              {{ messages[0] }}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <form action="/verify" method="POST" class="space-y-6">
+            <input type="text" name="otp" maxlength="6" pattern="\d{6}" required placeholder="000000" 
+                   class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-center text-2xl tracking-[1rem] outline-none focus:border-blue-500 font-mono text-white">
+            
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-xl font-bold transition uppercase tracking-widest">
+                Verify & Login
+            </button>
+        </form>
+        
+        <p class="mt-8 text-xs text-slate-500">Didn't get the code? <a href="/login" class="text-blue-400 hover:underline">Try a different email</a></p>
+    </div>
+</body>
+</html>
